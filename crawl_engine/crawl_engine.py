@@ -1,9 +1,23 @@
-from multiprocessing import process
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, CrawlerMonitor, DisplayMode, MemoryAdaptiveDispatcher
+import sys
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
 import asyncio
+from fastapi import HTTPException
 from loguru import logger
 
-async def crawl_batch():
+from app.models.crawl_models import CrawlResponse
+
+async def crawl_batch(urls: list[str]):
+    """
+    Crawl a batch of URLs asynchronously and process the results.
+    Args:
+        urls (list[str]): A list of URLs to crawl.
+    Returns:
+        list: A list of processed responses for successfully crawled URLs.
+    Raises:
+        HTTPException: If crawling the first URL in the batch fails.
+    """
+    
+    
     browser_config = BrowserConfig(headless=True, verbose=False)
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
@@ -17,13 +31,6 @@ async def crawl_batch():
         max_session_permit=10
     )
     
-    urls = [
-        "https://www.techwithtim.net/",
-        "https://www.techwithtim.net/tutorials",
-        "https://www.techwithtim.net/courses",
-        "https://www.techwithtim.net/newsletter"
-    ]
-    
     async with AsyncWebCrawler(config=browser_config) as crawler:
         results = await crawler.arun_many(
             urls=urls,
@@ -31,14 +38,25 @@ async def crawl_batch():
             dispatcher=dispatcher
         )
         
+        if not results or not results[0].success: # type: ignore
+            logger.error(f"Failed to crawl {urls[0]}: {results[0].error_message if results else 'Unknown error'}") # type: ignore
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to crawl {urls[0]}: {results[0].error_message if results else 'Unknown error'}" # type: ignore
+            )
+        responses = []
         for result in results: # type: ignore
             if result.success:
-                await process_result(result)
+                response = await process_result(result)
+                logger.info(response.model_dump())
+                responses.append(response)
             else:
                 logger.error(f"Failed to crawl {result.url}: {result.error_message}")
+        
+        return responses
 
 async def process_result(result):
-    """Process a successful crawl result.
+    """Process a successful crawl result and return a structured data.
 
     Args:
         result (CrawlResult): CrawlResult object containing page data and metadata
@@ -47,13 +65,14 @@ async def process_result(result):
     logger.info(f"\n\nprocessing: {result.url}")
     logger.info(f"status_code: {result.status_code}")
     
+    content_preview = None
     if result.markdown:
         # remove extra spaces and newlines from the markdown text
         # and limit the preview to 150 characters
         clean_text = ' '.join(result.markdown.split())
-        preview = clean_text[:150] + '...' if len(clean_text) > 150 else clean_text
+        content_preview = clean_text[:150] + '...' if len(clean_text) > 150 else clean_text
         
-        logger.info(f"content preview: {preview}")
+        logger.info(f"content preview: {content_preview}")
     
     # process metadata
     if result.metadata:
@@ -70,6 +89,24 @@ async def process_result(result):
     
     logger.info("-" * 80)
     
+    return CrawlResponse(
+        url=result.url,
+        status_code=result.status_code,
+        content_preview=content_preview,
+        metadata=result.metadata,
+        internal_link_count=len(internal_links),
+        external_link_count=len(external_links)
+    )
+    
 
 if __name__ == "__main__":
-    asyncio.run(crawl_batch())
+    if sys.platform.startswith("win"):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())    
+    urls = [
+        "https://www.techwithtim.net/",
+        "https://www.techwithtim.net/tutorials",
+        "https://www.techwithtim.net/courses",
+        "https://www.techwithtim.net/newsletter"
+    ]
+    
+    asyncio.run(crawl_batch(urls))
