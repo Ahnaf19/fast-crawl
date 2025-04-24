@@ -1,10 +1,9 @@
-import sys
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
 import asyncio
-from fastapi import HTTPException
 from loguru import logger
 
 from app.models.crawl_models import CrawlResponse
+
 
 async def crawl_batch(urls: list[str]):
     """
@@ -16,7 +15,6 @@ async def crawl_batch(urls: list[str]):
     Raises:
         HTTPException: If crawling the first URL in the batch fails.
     """
-    
     
     browser_config = BrowserConfig(headless=True, verbose=False)
     run_config = CrawlerRunConfig(
@@ -38,22 +36,15 @@ async def crawl_batch(urls: list[str]):
             dispatcher=dispatcher
         )
         
-        if not results or not results[0].success: # type: ignore
-            logger.error(f"Failed to crawl {urls[0]}: {results[0].error_message if results else 'Unknown error'}") # type: ignore
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to crawl {urls[0]}: {results[0].error_message if results else 'Unknown error'}" # type: ignore
-            )
         responses = []
         for result in results: # type: ignore
             if result.success:
                 response = await process_result(result)
-                logger.info(response.model_dump())
                 responses.append(response)
             else:
-                logger.error(f"Failed to crawl {result.url}: {result.error_message}")
-        
-        return responses
+                logger.error(f"Failed to crawl {result.url}: {result.error_message}")        
+    
+    return responses
 
 async def process_result(result):
     """Process a successful crawl result and return a structured data.
@@ -96,17 +87,17 @@ async def process_result(result):
         metadata=result.metadata,
         internal_link_count=len(internal_links),
         external_link_count=len(external_links)
-    )
-    
+    )  
 
-if __name__ == "__main__":
-    if sys.platform.startswith("win"):
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())    
+if __name__ == "__main__":  
     urls = [
         "https://www.techwithtim.net/",
         "https://www.techwithtim.net/tutorials",
         "https://www.techwithtim.net/courses",
-        "https://www.techwithtim.net/newsletter"
+        "https://www.techwithtim.net/newsletter",
+        "https://www.youtube.com/watch?v=K9anz4aB0S0"
     ]
     
-    asyncio.run(crawl_batch(urls))
+    responses = asyncio.run(crawl_batch(urls))
+    logger.info(f"responses len: {len(responses)}")
+    logger.info(responses)
