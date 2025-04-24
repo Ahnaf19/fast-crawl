@@ -75,7 +75,7 @@ run batch urls scraper:
 python -m crawl_engine.crawl_engine
 ```
 
-it scrapes 5 urls that is given inside by default. Tweak and play with them!
+it scrapes 5 urls that are given inside by default. Tweak and play with them!
 
 > [!IMPORTANT]
 > API service is still broken, to be fixed soon! You are welcome to contribute.
